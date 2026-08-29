@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# The free stand-in for GitHub push protection (declined at $19/committer). Runs the
+# same scanner as secret-scan.yml, locally, before the push leaves the machine --
+# catches a secret before it ever reaches a PR, not just before it merges.
+#
+# Installed via scripts/install-git-guards.sh, which points core.hooksPath at this
+# directory (hooks under .git/hooks/ can't be committed; the mapping to an
+# alternate hooksPath can).
+set -euo pipefail
+
+TRUFFLEHOG_VERSION="3.97.1"
+
+if ! command -v trufflehog >/dev/null 2>&1; then
+  echo "pre-push guard: trufflehog not found locally."
+  if command -v brew >/dev/null 2>&1; then
+    echo "Installing via Homebrew (trufflesecurity/trufflehog@${TRUFFLEHOG_VERSION})..."
+    brew install trufflehog || {
+      echo "pre-push guard: install failed. Install trufflehog yourself, or push with"
+      echo "  git push --no-verify"
+      echo "to skip this guard for one push (the CI check still runs on the PR either way)."
+      exit 1
+    }
+  else
+    echo "Homebrew not found. Install trufflehog: https://github.com/trufflesecurity/trufflehog#installation"
+    echo "Or push with 'git push --no-verify' to skip this guard for one push --"
+    echo "the CI check still runs on the PR either way."
+    exit 1
+  fi
+fi
+
+remote="$1"
+zero="0000000000000000000000000000000000000000"
+failed=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # branch deletion, nothing to scan
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New remote branch/ref: no shared history yet, scan everything reachable from
+    # local_sha that main doesn't already have, falling back to the last 50 commits
+    # if that range can't be computed (e.g. pushing an orphan branch).
+    range="$(git merge-base origin/main "$local_sha" 2>/dev/null)..$local_sha"
+    git rev-list "$range" >/dev/null 2>&1 || range="HEAD~50..$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  echo "pre-push guard: scanning $range ($remote_ref)..."
+  if ! trufflehog git file://. --since-commit "$(echo "$range" | cut -d. -f1)" \
+      --branch "$local_ref" --results=verified,unknown --fail --no-update; then
+    failed=1
+  fi
+done
+
+if [ "$failed" -ne 0 ]; then
+  echo
+  echo "pre-push guard: a verified secret was found in what you're about to push."
+  echo "Fix it, or if this is a false positive, push with 'git push --no-verify' and"
+  echo "flag it -- the CI check on the PR is the real gate; this is the early warning."
+  exit 1
+fi

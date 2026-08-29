@@ -1,0 +1,38 @@
+name: Secret Scan (weekly full-history sweep)
+
+# Reusable workflow -- called by each property/client repo's OWN scheduled trigger
+# (cron lives in the caller; a reusable workflow cannot schedule itself). Scans the
+# full git history, not just a PR's diff -- catches a secret a squash-merge could
+# hide from secret-scan.yml, or one committed before this floor repo was adopted.
+#
+# Caller shape:
+#
+#   on:
+#     schedule:
+#       - cron: '0 6 * * 1'   # weekly, property's own choice of day/time
+#     workflow_dispatch: {}
+#   jobs:
+#     sweep:
+#       uses: katalor-group/katalor-ci-floor/.github/workflows/weekly-full-history-sweep.yml@v1
+#       permissions:
+#         contents: read
+
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    name: Secret Scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog -- verified secrets across all reachable history
+        uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b # v3.97.1
+        with:
+          extra_args: --results=verified,unknown --fail

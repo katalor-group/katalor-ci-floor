@@ -1,0 +1,8 @@
+# Every change to this repo's workflows/hooks is reviewed -- it's called by every
+# property and client repo in the org, so a bad change here is a bad change
+# everywhere at once. TODO: a second reviewer identity is required before this
+# repo goes public (james ruled "you plus one" -- @jamesd-cloud is the one GitHub
+# account behind every agent's commits today; a real second identity, e.g. a
+# co-principal's own account, needs to be named here before CODEOWNERS review is
+# meaningful rather than a formality).
+* @jamesd-cloud
