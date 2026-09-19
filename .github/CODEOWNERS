@@ -1,8 +1,8 @@
 # Every change to this repo's workflows/hooks is reviewed -- it's called by every
 # property and client repo in the org, so a bad change here is a bad change
-# everywhere at once. TODO: a second reviewer identity is required before this
-# repo goes public (james ruled "you plus one" -- @jamesd-cloud is the one GitHub
-# account behind every agent's commits today; a real second identity, e.g. a
-# co-principal's own account, needs to be named here before CODEOWNERS review is
-# meaningful rather than a formality).
-* @jamesd-cloud
+# everywhere at once. Two real identities, not one: James ruled "you plus one"
+# before this repo goes public, precisely because @jamesd-cloud was the sole
+# account behind every agent's commits, making a single-owner CODEOWNERS review
+# a formality rather than a real second look. @megr-cloud is Meg's own account,
+# a genuinely separate principal -- named here 2026-09-18, closing that TODO.
+* @jamesd-cloud @megr-cloud
