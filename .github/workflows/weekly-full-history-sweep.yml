@@ -35,4 +35,10 @@ jobs:
       - name: TruffleHog -- verified secrets across all reachable history
         uses: trufflesecurity/trufflehog@cc1fe982afc515d2991365ce8d4d0dd07170fcad # v3.97.2
         with:
-          extra_args: --results=verified,unknown --fail
+          # NOT --fail here -- the action's own script (action.yml) unconditionally
+          # appends --fail to the constructed CLI invocation already; adding it again
+          # in extra_args produces a literal duplicate flag and trufflehog refuses to
+          # run at all ("flag 'fail' cannot be repeated"), failing every caller
+          # regardless of findings. Found live 2026-09-19 on the first real cross-org
+          # adopter (aws-templates) the day this repo went public.
+          extra_args: --results=verified,unknown
