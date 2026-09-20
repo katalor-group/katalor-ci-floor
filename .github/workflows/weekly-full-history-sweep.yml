@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog -- verified secrets across all reachable history
-        uses: trufflesecurity/trufflehog@cc1fe982afc515d2991365ce8d4d0dd07170fcad # v3.97.2
+        uses: trufflesecurity/trufflehog@f714bf454f350590f4a24c3ddb1aef02c35bf5b6 # v3.97.5
         with:
           # NOT --fail here -- the action's own script (action.yml) unconditionally
           # appends --fail to the constructed CLI invocation already; adding it again
