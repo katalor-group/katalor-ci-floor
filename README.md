@@ -60,6 +60,23 @@ Local pre-push guard, once per clone:
 curl -sSL https://raw.githubusercontent.com/katalor-group/katalor-ci-floor/v1/scripts/install-git-guards.sh | bash
 ```
 
+## What a green scan means
+
+A passing scan means **no live credential was found**. The scan reports only results TruffleHog could verify as active
+(`--results=verified,unknown`: a verified live secret, or one whose verifier could not decide). It does not report a
+revoked key, or a secret type that has no verifier, and it does not report a well-known example key. AWS's documented example
+access key, for instance, passes. That is by design: a scanner that blocks on noise trains people to override it. It is a floor
+against leaked live credentials, not a guarantee that no secret-shaped string exists in a diff.
+
+## Scanner version and time limits
+
+- The scanner is pinned to a release **and** an image digest (`version: "3.99.0@sha256:..."` in both workflows), not `latest`. The
+  action runs `"${image}:${version}"`; a `tag@digest` reference is resolved by the digest. Bump it by PR, together with the action's
+  commit pin (Dependabot moves the action pin only).
+- Jobs are bounded: the diff scan at 10 minutes, the weekly full-history sweep at 30. A normal diff scan runs under 30 seconds.
+- `@v1` is a tag. A change merged to `main` reaches no adopter until the `v1` tag is moved to a reviewed commit, and moving it
+  changes every adopter at once, so it is a deliberate release step, not part of a routine merge.
+
 ## Why TruffleHog
 
 Verifies whether a match is a live, active credential, not just a regex hit --
