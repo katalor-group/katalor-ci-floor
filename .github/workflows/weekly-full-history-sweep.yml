@@ -27,6 +27,9 @@ jobs:
   sweep:
     name: Secret Scan (full history)
     runs-on: ubuntu-latest
+    # A full-history scan of a small repo ran 13 to 16 seconds; a large history can take far longer, so this bound is wider than the diff
+    # scan's. 30 minutes still bounds a hung container pull or scan for every adopter. Raise it by PR if a real sweep needs more.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,3 +45,9 @@ jobs:
           # regardless of findings. Found live 2026-09-19 on the first real cross-org
           # adopter (aws-templates) the day this repo went public.
           extra_args: --results=verified,unknown
+          # Scanner version pinned to a release AND the digest of that release's image. The action's `version` input
+          # defaults to "latest", so without this every adopter scanned with whatever ghcr.io/trufflesecurity/trufflehog:latest
+          # was that day (an unreviewed binary in every repo's CI). The action runs "${image}:${version}", and
+          # Docker resolves "tag@digest" by the digest, so this is the exact image read from the registry on 2026-10-19.
+          # Bump it BY PR together with the action's commit pin above (Dependabot moves only the action pin, not this).
+          version: "3.99.0@sha256:39ee0643ae620664287bcc95f133f3fc8484590d6ca4e7105d96b90dac4b9f6f"
