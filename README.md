@@ -68,6 +68,38 @@ revoked key, or a secret type that has no verifier, and it does not report a wel
 access key, for instance, passes. That is by design: a scanner that blocks on noise trains people to override it. It is a floor
 against leaked live credentials, not a guarantee that no secret-shaped string exists in a diff.
 
+## Excluding history-only false positives (weekly sweep only)
+
+History cannot be rewritten, so a fixture committed once (a fake credential on a reserved test domain, say) keeps tripping the
+full-history sweep after it is fixed at HEAD. The sweep takes one optional input for that case:
+
+```yaml
+jobs:
+  sweep:
+    uses: katalor-group/katalor-ci-floor/.github/workflows/weekly-full-history-sweep.yml@v1
+    with:
+      exclude_paths_file: .github/secret-sweep-exclude.txt
+```
+
+The file is in the caller's checkout, at most 20 lines, **one file per line**, each line an anchored literal path with escaped dots:
+
+```
+^services/portal/shared/example\.test\.ts$
+```
+
+- The path is validated before the scan: relative, `[A-Za-z0-9._/-]` only, no `..`, a regular file, not a symlink, and not reached
+  through a symlinked directory. Every non-empty line must match `^` + literal path characters and `\.` + `$`. Wildcards, character
+  classes, alternation, groups and unescaped dots are all refused, so a pattern cannot cover a directory.
+- Any failed check fails the job. There is no fallback to an unexcluded scan and no way to skip the check.
+- The whole file is printed in the job log on every run, so every exclusion is visible in every run.
+- The only thing passed to the scanner is `--exclude-paths=<file>`, next to `--results=verified,unknown`. There is no free-form
+  extra-args input. With the input empty, the scanner call is unchanged.
+- `secret-scan.yml` (the PR diff scan) has no such input. A fixture in a diff is fixed in the PR.
+- Review the file in the caller's repo like a CODEOWNERS-protected security control: an exclusion is a hole in the scan.
+
+Tested by `.github/workflows/self-test.yml`: the validator's accept and refuse cases run against the shipped step itself, and a
+throwaway repo with two planted fixtures fails on the non-excluded one only, and passes with both excluded.
+
 ## Scanner version and time limits
 
 - The scanner is pinned to a release **and** an image digest (`version: "3.99.0@sha256:..."` in both workflows), not `latest`. The
