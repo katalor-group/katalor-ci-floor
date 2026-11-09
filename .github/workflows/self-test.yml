@@ -1,0 +1,61 @@
+name: Self-test (exclude_paths_file)
+
+# Positive control for the weekly sweep's optional exclude_paths_file input. Two layers:
+#   validator: extracts the shipped validator step from weekly-full-history-sweep.yml and runs it against accept/refuse cases.
+#   scanner:   plants two fake userinfo URIs on a reserved, unresolvable host in a throwaway repo and runs the pinned TruffleHog
+#              image with the same flags the sweep builds. Expected: fails on the non-excluded file only; passes with both excluded.
+# The scanner image reference is READ from the sweep workflow, so this test cannot drift onto a different scanner version.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/weekly-full-history-sweep.yml"
+      - ".github/workflows/self-test.yml"
+      - "scripts/test-exclude-validator.sh"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: bash scripts/test-exclude-validator.sh
+
+  scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Plant fixtures and scan
+        shell: bash
+        run: |
+          set -uo pipefail
+          version="$(yq '.jobs.sweep.steps[] | select(.name | test("TruffleHog")) | .with.version' .github/workflows/weekly-full-history-sweep.yml)"
+          image="ghcr.io/trufflesecurity/trufflehog:${version}"
+          echo "scanner: $image"
+
+          repo="$(mktemp -d)"; cd "$repo"
+          git init -q; git config user.email t@example.invalid; git config user.name t
+          mkdir -p fx
+          echo 'const u = "postgres://svc:hunter2pw@db.fixture-excluded.test:5432/app"' > fx/excluded.ts
+          echo 'const u = "postgres://svc:hunter2pw@db.fixture-kept.test:5432/app"'     > fx/kept.ts
+          git add -A; git commit -qm planted
+          # history-only: fixtures removed at HEAD, as in the real case
+          git rm -q -r fx; git commit -qm "fixed at HEAD"
+
+          scan() { docker run --rm -v "$repo":/tmp -w /tmp "$image" git file:///tmp/ --branch HEAD --fail --no-update --results=verified,unknown "$@" >scan.log 2>&1; }
+
+          printf '%s\n' '^fx/excluded\.ts$' > "$repo/ex-one.txt"
+          printf '%s\n' '^fx/excluded\.ts$' '^fx/kept\.ts$' > "$repo/ex-both.txt"
+          rc=0
+
+          scan; [ $? -ne 0 ] && echo "ok   no exclusion: fails" || { echo "FAIL control: planted fixtures were not detected, so the passes below mean nothing"; cat scan.log; rc=1; }
+          scan --exclude-paths=ex-one.txt
+          if [ $? -ne 0 ] && grep -q 'fx/kept.ts' scan.log && ! grep -q 'fx/excluded.ts' scan.log; then echo "ok   one excluded: fails on the other only"
+          else echo "FAIL one excluded"; cat scan.log; rc=1; fi
+          scan --exclude-paths=ex-both.txt && echo "ok   both excluded: passes" || { echo "FAIL both excluded"; cat scan.log; rc=1; }
+          exit $rc
