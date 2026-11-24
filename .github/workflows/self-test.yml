@@ -53,9 +53,12 @@ jobs:
           printf '%s\n' '^fx/excluded\.ts$' '^fx/kept\.ts$' > "$repo/ex-both.txt"
           rc=0
 
-          scan; [ $? -ne 0 ] && echo "ok   no exclusion: fails" || { echo "FAIL control: planted fixtures were not detected, so the passes below mean nothing"; cat scan.log; rc=1; }
-          scan --exclude-paths=ex-one.txt
-          if [ $? -ne 0 ] && grep -q 'fx/kept.ts' scan.log && ! grep -q 'fx/excluded.ts' scan.log; then echo "ok   one excluded: fails on the other only"
+          # The shell runs with -e: a bare scan that fails on purpose would abort the step (exit 183)
+          # before any assertion ran. Capture each exit code instead.
+          s=0; scan || s=$?
+          [ "$s" -ne 0 ] && echo "ok   no exclusion: fails" || { echo "FAIL control: planted fixtures were not detected, so the passes below mean nothing"; cat scan.log; rc=1; }
+          s=0; scan --exclude-paths=ex-one.txt || s=$?
+          if [ "$s" -ne 0 ] && grep -q 'fx/kept.ts' scan.log && ! grep -q 'fx/excluded.ts' scan.log; then echo "ok   one excluded: fails on the other only"
           else echo "FAIL one excluded"; cat scan.log; rc=1; fi
           scan --exclude-paths=ex-both.txt && echo "ok   both excluded: passes" || { echo "FAIL both excluded"; cat scan.log; rc=1; }
           exit $rc
