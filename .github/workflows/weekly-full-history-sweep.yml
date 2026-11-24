@@ -84,7 +84,7 @@ jobs:
           echo "exclude_paths_file accepted: $lines line(s) from $f"
 
       - name: TruffleHog -- verified secrets across all reachable history
-        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
         with:
           # NOT --fail here -- the action's own script (action.yml) unconditionally
           # appends --fail to the constructed CLI invocation already; adding it again
@@ -100,4 +100,4 @@ jobs:
           # was that day (an unreviewed binary in every repo's CI). The action runs "${image}:${version}", and
           # Docker resolves "tag@digest" by the digest, so this is the exact image read from the registry on 2026-10-19.
           # Bump it BY PR together with the action's commit pin above (Dependabot moves only the action pin, not this).
-          version: "3.99.0@sha256:39ee0643ae620664287bcc95f133f3fc8484590d6ca4e7105d96b90dac4b9f6f"
+          version: "3.99.8@sha256:674b2f187620a19df77f44cf9a7d77efcc581a5662accef2f2739cbb46ba4a3a"
