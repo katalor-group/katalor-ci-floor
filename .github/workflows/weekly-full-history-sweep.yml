@@ -16,9 +16,22 @@ name: Secret Scan (weekly full-history sweep)
 #       uses: katalor-group/katalor-ci-floor/.github/workflows/weekly-full-history-sweep.yml@v1
 #       permissions:
 #         contents: read
+#
+# Optional, history-only: `with: exclude_paths_file: .github/secret-sweep-exclude.txt` names a file in the
+# caller's checkout of anchored, literal path patterns TruffleHog skips. It exists for history that cannot be
+# rewritten (a test fixture's fake credential, already fixed at HEAD). The file is validated before the scan
+# and printed in full on every run; any violation fails the job. See README "Excluding history-only false positives".
 
 on:
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      exclude_paths_file:
+        description: >-
+          Optional path (relative to the caller's repo root) to a file of anchored literal path patterns,
+          at most 20 lines, one file per line. Empty (default) = no exclusions and an unchanged scan.
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -35,6 +48,41 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Runs only when the caller passes the input. The value arrives through env, never interpolated into the script. Any failure
+      # fails the job: there is no fallback to scanning without the exclusion, and none to skipping the check. The accepted
+      # grammar is an ALLOWLIST (literal path characters and escaped dots between ^ and $), strictly narrower than "no wildcards":
+      # it also rejects character classes, alternation, groups and unescaped dots, any of which could cover more than one file.
+      - name: Validate exclude_paths_file
+        id: validate_exclude
+        if: inputs.exclude_paths_file != ''
+        env:
+          EXCLUDE_FILE: ${{ inputs.exclude_paths_file }}
+          WORKSPACE: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=exclude_paths_file rejected::$1"; exit 1; }
+          f="$EXCLUDE_FILE"
+          [[ "$f" =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]] || fail "path must be relative and match [A-Za-z0-9._/-]+"
+          [[ "$f" != *..* ]] || fail "path must not contain '..'"
+          [ ! -L "$f" ] || fail "path is a symlink"
+          [ -f "$f" ] || fail "not a regular file"
+          real="$(realpath -- "$f")"
+          case "$real" in "$WORKSPACE"/*) ;; *) fail "path resolves outside the checkout (symlinked directory?)";; esac
+          lines="$(grep -c '' "$f" || true)"
+          [ "$lines" -le 20 ] || fail "$lines lines; at most 20 allowed"
+          n=0
+          while IFS= read -r line || [ -n "$line" ]; do
+            n=$((n + 1))
+            [ -z "$line" ] && continue
+            [[ "$line" =~ ^\^([A-Za-z0-9_/-]|\\\.)+\$$ ]] \
+              || fail "line $n is not an anchored literal path (^path\\.ext\$): $line"
+          done < "$f"
+          echo "::group::Exclusions applied to this sweep ($f)"
+          cat -- "$f"
+          echo "::endgroup::"
+          echo "exclude_paths_file accepted: $lines line(s) from $f"
+
       - name: TruffleHog -- verified secrets across all reachable history
         uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
         with:
@@ -44,7 +92,9 @@ jobs:
           # run at all ("flag 'fail' cannot be repeated"), failing every caller
           # regardless of findings. Found live 2026-09-19 on the first real cross-org
           # adopter (aws-templates) the day this repo went public.
-          extra_args: --results=verified,unknown
+          # Only --exclude-paths=<validated file> may be appended, and only when exclude_paths_file is set; with it empty this
+          # evaluates to exactly "--results=verified,unknown". There is deliberately no free-form extra-args input.
+          extra_args: --results=verified,unknown${{ inputs.exclude_paths_file != '' && format(' --exclude-paths={0}', inputs.exclude_paths_file) || '' }}
           # Scanner version pinned to a release AND the digest of that release's image. The action's `version` input
           # defaults to "latest", so without this every adopter scanned with whatever ghcr.io/trufflesecurity/trufflehog:latest
           # was that day (an unreviewed binary in every repo's CI). The action runs "${image}:${version}", and
